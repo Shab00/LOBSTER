@@ -1,0 +1,508 @@
+# LOBSTER: Multi-Agent Market Simulation Platform
+
+## Project North Star
+
+A production-grade limit order book simulator that replays historical markets, hosts autonomous trading agents that learn through interaction, and provides institutional-quality analytics — built across C, Python, Scala, Java, and Spark to demonstrate mastery of the full systems stack.
+
+---
+
+## PHASE 1: Foundation — The Deterministic Core
+
+**Goal:** A C engine so reliable and fast that everything else can be built on it with confidence.
+
+**Duration estimate:** 4-6 weeks
+
+### What you build:
+
+**C Engine (the heart)**
+- In-memory limit order book supporting add, modify, cancel, execute
+- Binary event parser (read raw market data files)
+- Deterministic replay — same input always produces identical output, verified with checksums
+- Fixed-point arithmetic throughout (no floating point indeterminism)
+- Core metrics computed incrementally: midprice, spread, imbalance, microprice
+- Snapshot output in compact binary format
+- Memory arena allocator — zero malloc/free during hot path
+- Comprehensive unit tests with known edge cases (empty book, crossed book, flash crash, self-trade prevention, price-time priority violations)
+- Microbenchmarks: events per second, memory footprint per symbol, cache miss rates
+
+**Python Bindings (the bridge)**
+- CFFI or Cython wrapper around the C engine
+- Python context manager for engine lifecycle
+- Iterator interface for replay sessions
+- Numpy array output from snapshots
+- Basic Jupyter notebook showing a replay with visualizations
+
+**Data Layer**
+- Sample dataset: one day of Nasdaq ITCH data for one symbol, or synthetic data generator if real data is unavailable
+- Binary file format specification documented
+- Simple Python script to validate data integrity
+
+### Deliverables:
+- C library `liblobster.so` with full test suite
+- Python package `lobster-core` installable via pip
+- Notebook: "Your First Market Replay"
+- README with build instructions and benchmarks
+
+### Checkpoint: Before moving on
+- [ ] Engine processes 5M+ events/second on a modern CPU
+- [ ] Determinism verified: 10 replays of same data produce identical checksums
+- [ ] All unit tests pass
+- [ ] Memory usage under 50KB per order book
+
+---
+
+## PHASE 2: Feature Engineering & Analytics Engine
+
+**Goal:** Transform raw order book state into the features that ML models and agents consume.
+
+**Duration estimate:** 3-4 weeks
+
+### What you build:
+
+**Feature Pipeline (Python)**
+- Feature extraction layer reading C engine snapshots
+- Level 1-5 book features: prices, sizes, imbalances at each level
+- Derived microstructure: effective spread, realized spread, Amihud illiquidity
+- Temporal features: rolling volatility, trade intensity, cancel intensity, order flow toxicity (VPIN)
+- Queue position estimation: model where an order sits in the queue
+- Feature versioning: every feature has a name, version, and computation lineage
+- Configuration-driven feature selection (YAML configs)
+- Output as Parquet files with schema
+
+**Risk Analytics (Python + C)**
+- Position tracking: simulate holding inventory over time
+- P&L decomposition: spread capture, directional, adverse selection components
+- Risk metrics: VaR, expected shortfall, max drawdown, Sharpe ratio
+- Stress scenarios: replay specific historical events (flash crash, FOMC announcement)
+- Report generation: automated PDF/HTML risk reports per strategy
+
+**Observability**
+- Prometheus metrics exported from Python layer
+- Latency histograms for feature computation
+- Data quality monitoring (missing ticks, gaps, outliers)
+
+### Deliverables:
+- Feature store with 50+ documented features
+- Risk report for a sample strategy over one month of data
+- Dashboard stub: Streamlit app showing feature distributions
+
+### Checkpoint:
+- [ ] Feature computation keeps up with 1M events/minute replay
+- [ ] All features documented with formulas and edge case behavior
+- [ ] Risk report generates without errors on complete trading day
+
+---
+
+## PHASE 3: Strategy Lab — Rules-Based First
+
+**Goal:** Build the strategy framework with traditional strategies first, establishing the evaluation methodology before adding ML complexity.
+
+**Duration estimate:** 3-4 weeks
+
+### What you build:
+
+**Strategy Framework (Python)**
+- Base strategy class with standard interface: `on_book_update()`, `on_trade()`, `on_timer()`
+- Strategy registry: load strategies by name from config
+- Paper trading engine: simulate fills with configurable latency and slippage models
+- Position and risk limits enforced at the engine level
+- Order management: track working orders, partial fills, cancellations
+
+**Initial Strategy Library (5-8 strategies)**
+- Passive market making: post on both sides, skew based on inventory
+- Mean reversion: trade when price deviates from rolling mean
+- Momentum: trade in direction of recent price moves
+- TWAP/VWAP execution: slice large orders over time
+- Spread capture: provide liquidity during wide spreads
+- Iceberg execution: hide large order size
+- Stop-loss hunting detection: identify and avoid predatory patterns
+
+**Backtesting Framework**
+- Walk-forward backtesting with strict temporal ordering
+- No lookahead bias verification
+- Transaction cost modeling: commissions, fees, slippage
+- Performance metrics per strategy: Sharpe, win rate, profit factor, max drawdown, turnover
+- Strategy comparison: side-by-side metrics across strategies on identical data
+- Tear sheets: automated strategy analysis with plots
+
+### Deliverables:
+- 5+ working strategies passing backtest validation
+- Backtesting framework with documentation
+- Comparison report: all strategies on one month of data
+
+### Checkpoint:
+- [ ] Backtest results are reproducible (rerun produces identical P&L)
+- [ ] At least one strategy shows positive Sharpe after transaction costs
+- [ ] Framework catches common errors (lookahead, survivorship, overfitting flags)
+
+---
+
+## PHASE 4: Machine Learning Integration
+
+**Goal:** Replace hardcoded strategy rules with learned models while maintaining the same evaluation rigor.
+
+**Duration estimate:** 4-5 weeks
+
+### What you build:
+
+**Midprice Direction Predictor**
+- LightGBM model predicting P(price_up) over configurable horizon
+- Feature importance analysis
+- Time-series cross-validation (no shuffling)
+- Model versioning with MLflow
+- Training pipeline: feature extraction → label generation → training → evaluation
+
+**Volatility Regime Classifier**
+- Gaussian Mixture Model on volatility and spread features
+- Automatic regime labeling (low vol, normal, high vol, extreme)
+- Regime transition probability matrix
+- Integration with strategy framework: strategies receive regime as input
+
+**Slippage Estimator**
+- XGBoost regression predicting execution cost in basis points
+- Features: order size relative to book, spread, volatility, depth decay
+- Calibrated on historical order outcomes
+
+**ML-Driven Strategy**
+- A strategy that uses all three models together
+- Midprice predictor provides directional signal
+- Regime classifier determines aggressiveness
+- Slippage estimator sizes positions
+- Compare performance against rules-based strategies
+
+**Training Infrastructure**
+- MLflow tracking server for experiment management
+- Feature store: consistent feature definitions across training and inference
+- Model registry: promote models to production
+- Automated retraining pipeline
+
+### Deliverables:
+- Three trained models with evaluation metrics
+- One ML-driven strategy outperforming rules-based baseline
+- MLflow dashboard with training history
+- Feature importance report
+
+### Checkpoint:
+- [ ] ML strategy Sharpe > best rules-based strategy Sharpe
+- [ ] No data leakage between training and evaluation
+- [ ] Models reload and produce identical predictions
+- [ ] Inference latency < 100μs per prediction
+
+---
+
+## PHASE 5: The Agent Layer — Reinforcement Learning
+
+**Goal:** Move from prediction to autonomous decision-making. Agents learn to trade through interaction with the market.
+
+**Duration estimate:** 6-8 weeks
+
+### What you build:
+
+**RL Environment (Python wrapping C engine)**
+- OpenAI Gym-compatible interface
+- Observation space: order book state, position, P&L, time of day, regime
+- Action space: discrete (buy/sell/hold with size tiers) or continuous (target position)
+- Reward function: risk-adjusted P&L, Sharpe, or utility function
+- Episode structure: one trading day = one episode
+- Reset: load new day's data, randomize starting conditions
+- Deterministic seeding for reproducibility
+
+**Agent Zoo (5+ agents representing market participants)**
+
+*Retail Trader Agent*
+- Learns simple directional trading
+- Limited capital, naive order placement
+- Represents uninformed flow
+
+*Market Maker Agent*
+- Learns to provide two-sided liquidity
+- Manages inventory risk
+- Adjusts spreads based on volatility and competition
+- Reward: spread capture minus adverse selection losses
+
+*Momentum Fund Agent*
+- Learns to detect and ride trends
+- Large order sizes that create impact
+- Must learn optimal execution to minimize slippage
+
+*Pension Fund Agent*
+- Large parent order to execute over hours/days
+- Objective: minimize implementation shortfall vs arrival price
+- Uses TWAP/VWAP as baseline, RL to improve
+
+*Predatory HFT Agent*
+- Learns to detect and exploit patterns
+- Picks off stale quotes
+- Front-runs large orders (within legal bounds)
+- Reward: pure P&L maximization
+
+*Mean Reversion Stat Arb Agent*
+- Learns to identify temporary dislocations
+- Pairs trading logic if multiple symbols available
+- Market-neutral positioning
+
+**Training Architecture**
+- Stable-Baselines3 for PPO, SAC, and DQN implementations
+- Custom PyTorch models for policy and value networks
+- Vectorized environments: run multiple days in parallel
+- Curriculum learning: start with calm days, gradually introduce volatile days
+- Checkpointing and resumption
+- TensorBoard integration for training monitoring
+
+**Evaluation Framework**
+- Agent-vs-market backtest: agent trades against historical replay
+- Agent-vs-agent: multiple agents interact in the same order book
+- Robustness testing: how does performance degrade with latency, stale data, partial fills?
+- Generalization: train on one symbol, test on another; train on one month, test on next month
+
+### Deliverables:
+- 5+ trained agents with distinct behaviors
+- Agent-vs-agent simulation environment
+- Training report: learning curves, reward evolution, strategy emergence
+- Visualization: market replay with agent actions overlaid
+
+### Checkpoint:
+- [ ] At least one agent demonstrates learning (reward improves over training)
+- [ ] Market maker agent learns inventory management
+- [ ] Agent actions are interpretable (not random noise)
+- [ ] Agent-vs-agent simulation runs without deadlocks or crashes
+
+---
+
+## PHASE 6: Multi-Agent Market Simulation (Option C)
+
+**Goal:** The flagship feature. Multiple autonomous agents interact in a shared order book, creating emergent market dynamics. This is a miniature financial ecosystem.
+
+**Duration estimate:** 8-10 weeks
+
+### What you build:
+
+**Multi-Agent Orchestrator**
+- Shared order book environment: multiple agents submit orders to the same C engine
+- Agent registration and lifecycle management
+- Fair scheduling: agents act in randomized order each timestep to avoid ordering artifacts
+- Information asymmetry: some agents see more of the book than others
+- Capital constraints per agent with margin calls and position limits
+- Market impact: large orders move prices
+- Fee structure: maker-taker fees, commissions
+
+**Agent Population Design**
+- Configurable population: choose which agents, how many of each, initial capital
+- Agent parameters: risk aversion, speed, information horizon, capital
+- Heterogeneous agents: no two identical, each has slightly different parameters
+- Entry/exit: agents can join or leave the market mid-simulation
+- Learning continues: agents keep training during multi-agent simulations
+
+**Emergence Research Framework**
+- Metrics for emergent properties:
+  - Spread dynamics: does competition narrow spreads?
+  - Volatility clustering: do agent interactions produce realistic volatility patterns?
+  - Flash crashes: under what conditions does the market break?
+  - Liquidity cascades: when one market maker withdraws, do others follow?
+  - Herding: do momentum agents synchronize?
+- Statistical tests comparing simulated to historical market properties
+- Phase transition detection: identify critical agent population thresholds
+- Counterfactual analysis: what if the predatory HFT wasn't present?
+
+**Scenario Library**
+- Normal trading day: balanced population
+- High volatility event: external shock to fundamental value
+- Flash crash: sudden withdrawal of market makers
+- Crowded trade unwinding: all momentum agents same direction
+- Regulatory intervention: circuit breaker triggers
+- New agent introduction: what happens when a new strategy enters?
+- Information event: some agents receive signal before others
+
+**Visualization & Analysis**
+- Real-time visualization of order book with agent positions
+- Agent P&L over time, annotated with key events
+- Market quality metrics over simulation time
+- Agent strategy evolution: how do behaviors change in multi-agent setting?
+- Network graph: which agents trade with which others?
+- Survival analysis: which agent types persist, which go extinct?
+
+### Deliverables:
+- Multi-agent simulation running 100+ agents simultaneously
+- 10+ documented scenarios with analysis
+- Research paper-style writeup: "Emergent Properties of a Multi-Agent Limit Order Book"
+- Demo video: 5-minute simulation with narration
+- Comparative analysis: simulated vs historical market properties
+
+### Checkpoint:
+- [ ] Simulation produces realistic spread distributions
+- [ ] Flash crash scenario replicates key features of May 2010
+- [ ] Agent population reaches equilibrium (not all go bankrupt)
+- [ ] At least one emergent property documented with statistical evidence
+- [ ] Simulation speed: 1 day of market time < 10 minutes wall clock
+
+---
+
+## PHASE 7: Distributed Infrastructure — Spark + Scala + Java
+
+**Goal:** Scale from single-machine research to cluster-scale production. This is where the polyglot architecture shines.
+
+**Duration estimate:** 6-8 weeks
+
+### What you build:
+
+**Data Pipeline (Scala + Spark)**
+- Ingestion layer: read raw exchange data formats (ITCH, OUCH, FIX logs) into Spark DataFrames
+- Data cleaning: remove bad ticks, handle gaps, normalize timestamps across symbols
+- Partitioning: output as Parquet partitioned by date/symbol for efficient querying
+- Feature generation at scale: apply feature engineering to all symbols in parallel
+- Training dataset assembly: join features with forward-looking labels across the universe
+
+**Distributed Backtesting (Scala + Spark)**
+- Symbol-parallel backtesting: each executor runs C engine on its symbol shard
+- Strategy distribution: serialize strategy config, deserialize on executor
+- Result aggregation: collect P&L curves, trade logs, risk metrics to driver
+- Parameter sweeps: grid search over strategy parameters, distributed across cluster
+- Failure handling: executor crashes don't lose all results
+
+**Feature Store (Java)**
+- Low-latency feature serving for live trading (if extended to real-time)
+- Feature metadata registry: name, version, computation lineage, owner
+- Point-in-time correctness: features computed using only data available at that timestamp
+- Backfill pipeline: recompute features when definitions change
+- gRPC API for feature retrieval with < 5ms latency
+
+**Java Services (JVM ecosystem)**
+- Order management system: track orders across strategies, handle FIX protocol messages
+- Position service: real-time position tracking across symbols and strategies
+- Risk service: pre-trade risk checks (max order size, max position, max loss)
+- Market data gateway simulator: replay historical data as if it were live
+- Service discovery and health checking
+
+**Coordination Layer**
+- ZooKeeper/etcd for distributed configuration
+- Kafka for event streaming between components (if real-time extension)
+- Distributed locking for shared state
+- Leader election for singleton services
+
+**Scala DSL for Strategy Definition**
+- Type-safe strategy configuration language
+- Compile-time validation of strategy parameters
+- Strategy composition: combine strategies with allocation weights
+- Version control friendly: strategies defined in code, not UI
+- Example: `Strategy("mean_reversion").params(lookback -> 50, entry -> 2.0).riskLimit(maxDrawdown -> 0.05)`
+
+### Deliverables:
+- Spark pipeline processing 100GB+ of market data
+- Distributed backtest: 500 symbols, 2 years, 10 strategies in under 1 hour
+- Feature store with point-in-time serving
+- Java services for OMS, position tracking, risk
+- Scala DSL examples
+
+### Checkpoint:
+- [ ] Spark job completes on full dataset without OOM errors
+- [ ] Feature store serves features with < 10ms p99 latency
+- [ ] Distributed backtest results match single-machine results exactly
+- [ ] Java services pass integration tests
+
+---
+
+## PHASE 8: API, Deployment & Production Polish
+
+**Goal:** Transform from a research platform into a deployable product.
+
+**Duration estimate:** 4-5 weeks
+
+### What you build:
+
+**REST API (FastAPI + Python)**
+- `/simulate/multi-agent`: launch multi-agent simulation with config
+- `/simulate/{id}/status`: check simulation progress
+- `/simulate/{id}/results`: get results when complete
+- `/backtest`: run distributed backtest
+- `/features/{symbol}`: query feature store
+- `/risk/{strategy}`: get risk report
+- `/agents`: list available agents and their parameters
+- `/scenarios`: list predefined scenarios
+- WebSocket endpoint for real-time simulation streaming
+- Authentication and rate limiting
+- OpenAPI documentation auto-generated
+
+**Infrastructure**
+- Docker Compose for local development (C engine container, Python API, Spark master/worker, Redis, PostgreSQL)
+- Kubernetes manifests for production deployment
+- Helm chart for the full platform
+- CI/CD pipeline (GitHub Actions): build, test, benchmark on every commit
+- Integration tests spinning up full platform
+- Performance regression detection in CI
+
+**Monitoring & Observability**
+- Grafana dashboard: system health, simulation throughput, agent P&L
+- Prometheus metrics at every layer
+- Structured logging with correlation IDs across services
+- Alerting: simulation failures, performance degradation, data quality issues
+- Distributed tracing across C → Python → Spark → API calls
+
+**Documentation**
+- Architecture decision records (ADRs) for key design choices
+- API documentation with examples
+- Getting started guide: from zero to running simulation in 10 minutes
+- Developer guide: how to add a new agent, strategy, or feature
+- Operator guide: deploying to Kubernetes, scaling, backup
+- Performance tuning guide
+
+**Sample Applications (to demonstrate value)**
+- "How would a Tobin tax affect market quality?" — run simulation with and without tax
+- "What happens when a large pension fund executes?" — impact analysis
+- "Are flash crashes inevitable with HFT?" — agent population experiments
+- "Optimal market maker spread in competitive markets" — parameter sweep
+
+### Deliverables:
+- Full API with 20+ endpoints
+- Docker Compose one-command startup
+- K8s Helm chart
+- Grafana dashboard
+- 4 sample application notebooks with analysis
+- Complete documentation site
+
+### Checkpoint:
+- [ ] Platform starts from scratch in under 5 minutes (Docker Compose)
+- [ ] API handles 100 concurrent simulation requests
+- [ ] CI pipeline passes including integration tests
+- [ ] Documentation reviewed by someone unfamiliar with the project
+- [ ] All sample applications run without errors
+
+---
+
+## PHASE 9: Research Paper, Portfolio & Open Source (if desired)
+
+**Goal:** Package the project for maximum career impact.
+
+**Duration estimate:** 3-4 weeks
+
+### What you produce:
+
+**Technical Writeup**
+- Blog post series: one per phase, explaining architecture decisions
+- Whitepaper: "LOBSTER: A Multi-Agent Platform for Market Microstructure Research" (academic style, 15-20 pages)
+- Conference talk proposal: PyData, Strange Loop, or quantitative finance venues
+- Architecture diagram: beautiful, print-quality, tells the whole story at a glance
+
+**Portfolio Artifacts**
+- Project README: compelling, visual, shows results immediately
+- Demo video: 3-5 minutes, shows multi-agent simulation with narration
+- Live demo (if feasible): small-scale version hosted on cheap cloud
+- Comparison to existing tools: why LOBSTER vs others (more realistic agents, faster, polyglot)
+- Metrics dashboard screenshot: shows scale (events processed, agents running, etc.)
+
+**Open Source Launch (Optional)**
+- Choose license (Apache 2.0 or MIT)
+- Contribution guidelines
+- Issue templates
+- Code of conduct
+- Roadmap published
+- "Good first issue" tags for community
+- Social media launch plan
+- Hacker News "Show HN" post
+
+### Deliverables:
+- Published blog series or whitepaper
+- Architecture diagram
+- Demo video
+- Portfolio-ready GitHub repository
+
+---
