@@ -6,65 +6,75 @@ LDFLAGS = -lm -lcjson
 CJSON_INCLUDE = -I/opt/homebrew/include
 CJSON_LIB = -L/opt/homebrew/lib
 
+# libwebsockets + OpenSSL
+LWS_CFLAGS = $(shell pkg-config --cflags libwebsockets) -I/opt/homebrew/opt/openssl@3/include
+LWS_LIBS = $(shell pkg-config --libs libwebsockets) -L/opt/homebrew/opt/openssl@3/lib
+
 SRCDIR = src
 INCDIR = include
 TESTDIR = tests
 OBJDIR = build
 BINDIR = bin
 
-# Core library sources (no main)
-LIB_SOURCES := $(filter-out $(SRCDIR)/%_main.c, $(wildcard $(SRCDIR)/*.c))
-LIB_OBJECTS := $(LIB_SOURCES:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
+# All .c files
+ALL_SOURCES = $(wildcard $(SRCDIR)/*.c)
+TEST_SOURCES = $(wildcard $(TESTDIR)/*.c)
 
-# Programs with main
-MAIN_SOURCES := $(wildcard $(SRCDIR)/*_main.c)
-MAIN_BINS := $(MAIN_SOURCES:$(SRCDIR)/%_main.c=$(BINDIR)/%)
+# Anything with _main.c or in tests/ is a standalone program.
+# Everything else in src/ is a library object.
+LIB_SOURCES = $(filter-out $(SRCDIR)/%_main.c, $(ALL_SOURCES))
+LIB_OBJECTS = $(LIB_SOURCES:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
 
-# Auto-discover all test files
-TEST_SOURCES := $(wildcard $(TESTDIR)/test_*.c)
-TEST_BINS := $(TEST_SOURCES:$(TESTDIR)/test_%.c=$(BINDIR)/test_%)
+# Standalone programs: src/*_main.c -> bin/*
+MAIN_SOURCES = $(filter $(SRCDIR)/%_main.c, $(ALL_SOURCES))
+MAIN_BINS = $(MAIN_SOURCES:$(SRCDIR)/%_main.c=$(BINDIR)/%)
 
-# Default target: build all test binaries
-all: $(TEST_BINS) $(MAIN_BINS)
+# Standalone programs: tests/*.c -> bin/test_*
+TEST_BINS = $(TEST_SOURCES:$(TESTDIR)/%.c=$(BINDIR)/%)
 
-# Ensure directories exist FIRST
+# Everything
+all: $(MAIN_BINS) $(TEST_BINS)
+
+# Directories
 $(OBJDIR) $(BINDIR):
 	mkdir -p $@
 
-# Compile core library sources to object files
+# Compile library sources (files in src/ that are NOT *_main.c)
 $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
-	$(CC) $(CFLAGS) -I$(INCDIR) $(CJSON_INCLUDE) -c $< -o $@
+	$(CC) $(CFLAGS) -I$(INCDIR) $(CJSON_INCLUDE) $(LWS_CFLAGS) -c $< -o $@
 
-# Link test binaries (only use core library objects, not main programs)
-$(BINDIR)/test_%: $(TESTDIR)/test_%.c $(LIB_OBJECTS) | $(BINDIR)
-	$(CC) $(CFLAGS) -I$(INCDIR) $(CJSON_INCLUDE) $(LIB_OBJECTS) $< -o $@ $(CJSON_LIB) $(LDFLAGS)
-
-# Link main programs
+# Link src/*_main.c programs (link against library objects)
 $(BINDIR)/%: $(SRCDIR)/%_main.c $(LIB_OBJECTS) | $(BINDIR)
-	$(CC) $(CFLAGS) -I$(INCDIR) $(CJSON_INCLUDE) $(LIB_OBJECTS) $< -o $@ $(CJSON_LIB) $(LDFLAGS)
+	$(CC) $(CFLAGS) -I$(INCDIR) $(CJSON_INCLUDE) $(LWS_CFLAGS) $< $(LIB_OBJECTS) -o $@ $(CJSON_LIB) $(LDFLAGS) $(LWS_LIBS)
+
+# Link tests/*.c programs (link against library objects)
+$(BINDIR)/%: $(TESTDIR)/%.c $(LIB_OBJECTS) | $(BINDIR)
+	$(CC) $(CFLAGS) -I$(INCDIR) $(CJSON_INCLUDE) $(LWS_CFLAGS) $< $(LIB_OBJECTS) -o $@ $(CJSON_LIB) $(LDFLAGS) $(LWS_LIBS)
 
 # Run all tests
-run_tests: $(TEST_BINS)
-	@for test in $(TEST_BINS); do \
-		echo "=== Running $$test ==="; \
-		$$test || exit 1; \
+test: $(TEST_BINS)
+	@passed=0; failed=0; \
+	for test in $(TEST_BINS); do \
+		echo "=== $$test ==="; \
+		if $$test; then passed=$$((passed+1)); else failed=$$((failed+1)); fi; \
 		echo; \
-	done
+	done; \
+	echo "Passed: $$passed | Failed: $$failed"
 
-# Run a specific test: make run_test TEST=simulator
-run_test: $(BINDIR)/test_$(TEST)
-	./$(BINDIR)/test_$(TEST)
+# Run all tests + all mains (verify they start)
+check: test $(MAIN_BINS)
+	@for prog in $(MAIN_BINS); do echo "=== $$prog --help ==="; $$prog --help 2>&1 | head -3; echo; done
 
-# Run a benchmark: make run BENCH=benchmark
-run: $(BINDIR)/$(BENCH)
-	./$(BINDIR)/$(BENCH)
+# Run a specific binary: make run BIN=ws_main
+run: $(BINDIR)/$(BIN)
+	./$(BINDIR)/$(BIN)
 
-# Clean build artifacts
+# Clean
 clean:
 	rm -rf $(OBJDIR) $(BINDIR)
 
-# Verbose output
-verbose: CFLAGS += -DDEBUG
-verbose: clean all
+# Debug build
+debug: CFLAGS = -g -O0 -Wall -Wextra -fPIC -std=c11 -DDEBUG
+debug: clean all
 
-.PHONY: all run_tests run_test run clean verbose
+.PHONY: all test check run clean debug
