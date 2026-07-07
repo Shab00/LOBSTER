@@ -262,18 +262,22 @@ int ob_cancel_order(OrderBook *ob, order_id_t id) {
 int ob_modify_order(OrderBook *ob, order_id_t id, volume_t new_qty) {
     OrderNode *node = order_map_lookup(ob->order_map, id);
     if (!node || new_qty < node->order.filled) return -1;
-    
+
+    if (new_qty == 0) {
+        return ob_cancel_order(ob, id);
+    }
+
     volume_t old_qty = node->order.quantity;
     volume_t delta = new_qty - old_qty;
     node->order.quantity = new_qty;
-    
+
     int is_bid = (node->order.price > 0);
     if (is_bid) {
         ob->total_bid_volume += delta;
     } else {
         ob->total_ask_volume += delta;
     }
-    
+
     return 0;
 }
 
