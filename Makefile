@@ -2,13 +2,15 @@ CC = clang
 CFLAGS = -O3 -march=native -Wall -Wextra -fPIC -std=c11
 LDFLAGS = -lm -lcjson
 
-# macOS ARM64 homebrew paths
-CJSON_INCLUDE = -I/opt/homebrew/include
-CJSON_LIB = -L/opt/homebrew/lib
+# Auto-detect Homebrew prefix (works on both Intel and ARM Macs)
+BREW_PREFIX = $(shell brew --prefix)
+
+CJSON_INCLUDE = -I$(BREW_PREFIX)/include
+CJSON_LIB = -L$(BREW_PREFIX)/lib
 
 # libwebsockets + OpenSSL
-LWS_CFLAGS = $(shell pkg-config --cflags libwebsockets) -I/opt/homebrew/opt/openssl@3/include
-LWS_LIBS = $(shell pkg-config --libs libwebsockets) -L/opt/homebrew/opt/openssl@3/lib
+LWS_CFLAGS = $(shell pkg-config --cflags libwebsockets) -I$(BREW_PREFIX)/opt/openssl@3/include
+LWS_LIBS = $(shell pkg-config --libs libwebsockets) -L$(BREW_PREFIX)/opt/openssl@3/lib
 
 SRCDIR = src
 INCDIR = include

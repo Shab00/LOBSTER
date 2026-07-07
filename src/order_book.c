@@ -278,9 +278,97 @@ int ob_modify_order(OrderBook *ob, order_id_t id, volume_t new_qty) {
 }
 
 int ob_execute_trade(OrderBook *ob, price_t price, volume_t qty, uint64_t ts) {
-    (void)ob; (void)price; (void)qty; (void)ts;
-    /* TODO: implement matching engine */
-    return 0;
+    if (!ob || qty <= 0) return -1;
+    (void)ts;  /* reserved for future use */
+
+    volume_t remaining = qty;
+    int is_buy = (price > 0);
+
+    if (is_buy) {
+        while (remaining > 0 && ob->ask_count > 0) {
+            PriceLevel *level = &ob->asks[0];  /* best ask */
+
+            while (level->head && remaining > 0) {
+                OrderNode *node = level->head;
+                volume_t available = node->order.quantity - node->order.filled;
+
+                if (available <= remaining) {
+                    /* Full fill — remove this node */
+                    remaining -= available;
+                    node->order.filled = node->order.quantity;
+                    level->total_volume -= available;
+                    ob->total_ask_volume -= available;
+
+                    level->head = node->next;
+                    if (level->head) {
+                        level->head->prev = NULL;
+                    } else {
+                        level->tail = NULL;
+                    }
+
+                    order_map_remove(ob->order_map, node->order.id);
+                    free(node);
+                } else {
+                    node->order.filled += remaining;
+                    node->order.quantity -= remaining;
+                    level->total_volume -= remaining;
+                    ob->total_ask_volume -= remaining;
+                    remaining = 0;
+                }
+            }
+
+            if (level->head == NULL) {
+                for (size_t i = 0; i < ob->ask_count - 1; i++) {
+                    ob->asks[i] = ob->asks[i + 1];
+                }
+                ob->ask_count--;
+            }
+        }
+    } else {
+        while (remaining > 0 && ob->bid_count > 0) {
+            PriceLevel *level = &ob->bids[0];
+
+            while (level->head && remaining > 0) {
+                OrderNode *node = level->head;
+                volume_t available = node->order.quantity - node->order.filled;
+
+                if (available <= remaining) {
+                    remaining -= available;
+                    node->order.filled = node->order.quantity;
+                    level->total_volume -= available;
+                    ob->total_bid_volume -= available;
+
+                    level->head = node->next;
+                    if (level->head) {
+                        level->head->prev = NULL;
+                    } else {
+                        level->tail = NULL;
+                    }
+
+                    order_map_remove(ob->order_map, node->order.id);
+                    free(node);
+                } else {
+                    node->order.filled += remaining;
+                    node->order.quantity -= remaining;
+                    level->total_volume -= remaining;
+                    ob->total_bid_volume -= remaining;
+                    remaining = 0;
+                }
+            }
+
+            if (level->head == NULL) {
+                for (size_t i = 0; i < ob->bid_count - 1; i++) {
+                    ob->bids[i] = ob->bids[i + 1];
+                }
+                ob->bid_count--;
+            }
+        }
+    }
+
+    ob->best_bid = (ob->bid_count > 0) ? ob->bids[0].price : 0;
+    ob->best_ask = (ob->ask_count > 0) ? ob->asks[0].price : 0;
+
+    return (int)(qty - remaining);
 }
 
 price_t ob_get_best_bid(OrderBook *ob) {
