@@ -3,6 +3,7 @@
 #include <string.h>
 
 #define INITIAL_MAP_CAPACITY 1024
+#define ARENA_SIZE (16 * 1024 * 1024)  /* 16MB */
 
 static size_t hash_order_id(order_id_t id, size_t capacity) {
     return (id * 11400714819323198485ULL) % capacity;
@@ -75,6 +76,18 @@ static int order_map_remove(OrderMap *map, order_id_t id) {
     return -1;
 }
 
+/* Arena bump allocator — allocates from pre-allocated block, no free() needed */
+static void* arena_alloc(OrderBook *ob, size_t size) {
+    /* Align to 8 bytes */
+    size = (size + 7) & ~7;
+    if (ob->arena_offset + size > ob->arena_size) {
+        return NULL;  /* Arena exhausted */
+    }
+    void *ptr = ob->arena + ob->arena_offset;
+    ob->arena_offset += size;
+    return ptr;
+}
+
 OrderBook* ob_create(size_t max_price_levels, size_t max_orders) {
     OrderBook *ob = malloc(sizeof(OrderBook));
     ob->bids = calloc(max_price_levels, sizeof(PriceLevel));
@@ -87,31 +100,42 @@ OrderBook* ob_create(size_t max_price_levels, size_t max_orders) {
     ob->best_ask = 0;
     ob->total_bid_volume = 0;
     ob->total_ask_volume = 0;
+    
+    /* Arena allocator */
+    ob->arena = malloc(ARENA_SIZE);
+    ob->arena_size = ARENA_SIZE;
+    ob->arena_offset = 0;
+    
     return ob;
 }
 
 void ob_destroy(OrderBook *ob) {
     if (!ob) return;
-    for (size_t i = 0; i < ob->bid_count; i++) {
-        OrderNode *node = ob->bids[i].head;
-        while (node) {
-            OrderNode *next = node->next;
-            free(node);
-            node = next;
-        }
-    }
-    for (size_t i = 0; i < ob->ask_count; i++) {
-        OrderNode *node = ob->asks[i].head;
-        while (node) {
-            OrderNode *next = node->next;
-            free(node);
-            node = next;
-        }
-    }
+    /* Arena frees all OrderNodes in one shot — no per-node free needed */
+    free(ob->arena);
     free(ob->bids);
     free(ob->asks);
     order_map_destroy(ob->order_map);
     free(ob);
+}
+
+void ob_clear(OrderBook *ob) {
+    if (!ob) return;
+    ob->bid_count = 0;
+    ob->ask_count = 0;
+    ob->best_bid = 0;
+    ob->best_ask = 0;
+    ob->total_bid_volume = 0;
+    ob->total_ask_volume = 0;
+    ob->arena_offset = 0;
+    
+    /* Reset order map */
+    memset(ob->order_map->entries, 0, ob->order_map->capacity * sizeof(OrderEntry));
+    ob->order_map->size = 0;
+    
+    /* Reset price level arrays */
+    memset(ob->bids, 0, ob->max_levels * sizeof(PriceLevel));
+    memset(ob->asks, 0, ob->max_levels * sizeof(PriceLevel));
 }
 
 int ob_add_order(OrderBook *ob, order_id_t id, price_t price, volume_t qty, uint64_t ts) {
@@ -119,7 +143,7 @@ int ob_add_order(OrderBook *ob, order_id_t id, price_t price, volume_t qty, uint
     
     if (order_map_lookup(ob->order_map, id)) return -1;
     
-    OrderNode *node = malloc(sizeof(OrderNode));
+    OrderNode *node = arena_alloc(ob, sizeof(OrderNode));
     if (!node) return -1;
     
     node->order.id = id;
@@ -155,7 +179,8 @@ int ob_add_order(OrderBook *ob, order_id_t id, price_t price, volume_t qty, uint
         levels[found].total_volume += qty;
     } else {
         if (*count >= ob->max_levels) {
-            free(node);
+            /* Arena can't free individual nodes; node is lost but harmless.
+             * Future improvement: use a fallback freelist */
             return -1;
         }
         
@@ -254,7 +279,7 @@ int ob_cancel_order(OrderBook *ob, order_id_t id) {
     }
     
     order_map_remove(ob->order_map, id);
-    free(node);
+    /* Node memory is owned by arena — no free() needed */
     
     return 0;
 }
@@ -290,14 +315,13 @@ int ob_execute_trade(OrderBook *ob, price_t price, volume_t qty, uint64_t ts) {
 
     if (is_buy) {
         while (remaining > 0 && ob->ask_count > 0) {
-            PriceLevel *level = &ob->asks[0];  /* best ask */
+            PriceLevel *level = &ob->asks[0];
 
             while (level->head && remaining > 0) {
                 OrderNode *node = level->head;
                 volume_t available = node->order.quantity - node->order.filled;
 
                 if (available <= remaining) {
-                    /* Full fill — remove this node */
                     remaining -= available;
                     node->order.filled = node->order.quantity;
                     level->total_volume -= available;
@@ -311,7 +335,7 @@ int ob_execute_trade(OrderBook *ob, price_t price, volume_t qty, uint64_t ts) {
                     }
 
                     order_map_remove(ob->order_map, node->order.id);
-                    free(node);
+                    /* Node memory owned by arena */
                 } else {
                     node->order.filled += remaining;
                     node->order.quantity -= remaining;
@@ -350,7 +374,7 @@ int ob_execute_trade(OrderBook *ob, price_t price, volume_t qty, uint64_t ts) {
                     }
 
                     order_map_remove(ob->order_map, node->order.id);
-                    free(node);
+                    /* Node memory owned by arena */
                 } else {
                     node->order.filled += remaining;
                     node->order.quantity -= remaining;

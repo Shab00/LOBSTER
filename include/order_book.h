@@ -53,10 +53,16 @@ typedef struct {
     price_t best_ask;
     volume_t total_bid_volume;
     volume_t total_ask_volume;
+    
+    /* Arena allocator */
+    char *arena;
+    size_t arena_size;
+    size_t arena_offset;
 } OrderBook;
 
 OrderBook* ob_create(size_t max_price_levels, size_t max_orders);
 void ob_destroy(OrderBook *ob);
+void ob_clear(OrderBook *ob);
 
 int ob_add_order(OrderBook *ob, order_id_t id, price_t price, volume_t qty, uint64_t ts);
 int ob_cancel_order(OrderBook *ob, order_id_t id);
