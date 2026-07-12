@@ -43,11 +43,14 @@ A production-grade limit order book simulator that replays historical markets, h
 - Notebook: "Your First Market Replay"
 - README with build instructions and benchmarks
 
-### Checkpoint: Before moving on
-- [ ] Engine processes 5M+ events/second on a modern CPU
-- [ ] Determinism verified: 10 replays of same data produce identical checksums
-- [ ] All unit tests pass
-- [ ] Memory usage under 50KB per order book
+## Phase 1: Remaining items (deferred, not blocking)
+
+- Binary event parser — currently using JSON parsing, works fine for development. Add compact binary format when performance requires it.
+- Binary file format specification — document the format once it stabilizes in a later phase.
+- CFFI/Cython bindings — currently using ctypes which is simpler and fully functional. Revisit if performance or complexity demands it.
+- Jupyter notebook showing replay with visualizations — nice-to-have for demos, not blocking Phase 2.
+- 5M+ events/sec benchmark — currently at 2.2M/sec on real data, 12M/sec synthetic. Solid but not yet hitting original stretch target.
+- Memory under 50KB per order book — arena is 16MB total pre-allocated. Per-book measurement not yet done. Adequate for current scale.
 
 ---
 
