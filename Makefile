@@ -53,6 +53,12 @@ $(BINDIR)/%: $(SRCDIR)/%_main.c $(LIB_OBJECTS) | $(BINDIR)
 $(BINDIR)/%: $(TESTDIR)/%.c $(LIB_OBJECTS) | $(BINDIR)
 	$(CC) $(CFLAGS) -I$(INCDIR) $(CJSON_INCLUDE) $(LWS_CFLAGS) $< $(LIB_OBJECTS) -o $@ $(CJSON_LIB) $(LDFLAGS) $(LWS_LIBS)
 
+# Build shared library for Python bindings
+$(BINDIR)/liblobster.dylib: $(LIB_OBJECTS) | $(BINDIR)
+	$(CC) -shared -o $@ $(LIB_OBJECTS) $(CJSON_LIB) $(LDFLAGS)
+
+lib: $(BINDIR)/liblobster.dylib
+
 # Run all tests
 test: $(TEST_BINS)
 	@passed=0; failed=0; \
@@ -79,4 +85,4 @@ clean:
 debug: CFLAGS = -g -O0 -Wall -Wextra -fPIC -std=c11 -DDEBUG
 debug: clean all
 
-.PHONY: all test check run clean debug
+.PHONY: all test check run clean debug lib
