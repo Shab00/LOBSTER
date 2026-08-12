@@ -146,7 +146,7 @@ static int callback(struct lws *wsi, enum lws_callback_reasons reason,
 
 static const struct lws_protocols protocols[] = {
     {
-        .name = "lobster-binance",
+        .name = "abyss-binance",
         .callback = callback,
         .per_session_data_size = 0,
         .rx_buffer_size = 4096,
@@ -191,7 +191,7 @@ int main(void) {
         return 1;
     }
 
-    printf("[STARTING] LOBSTER live depth stream...\n");
+    printf("[STARTING] ABYSS live depth stream...\n");
 
     while (running) {
         lws_service(context, 500);

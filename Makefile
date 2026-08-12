@@ -54,10 +54,10 @@ $(BINDIR)/%: $(TESTDIR)/%.c $(LIB_OBJECTS) | $(BINDIR)
 	$(CC) $(CFLAGS) -I$(INCDIR) $(CJSON_INCLUDE) $(LWS_CFLAGS) $< $(LIB_OBJECTS) -o $@ $(CJSON_LIB) $(LDFLAGS) $(LWS_LIBS)
 
 # Build shared library for Python bindings
-$(BINDIR)/liblobster.dylib: $(LIB_OBJECTS) | $(BINDIR)
+$(BINDIR)/libabyss.dylib: $(LIB_OBJECTS) | $(BINDIR)
 	$(CC) -shared -o $@ $(LIB_OBJECTS) $(CJSON_LIB) $(LDFLAGS)
 
-lib: $(BINDIR)/liblobster.dylib
+lib: $(BINDIR)/libabyss.dylib
 
 # Run all tests
 test: $(TEST_BINS)

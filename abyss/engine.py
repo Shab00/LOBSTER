@@ -1,9 +1,9 @@
-"""LOBSTER C engine bindings via ctypes."""
+"""ABYSS C engine bindings via ctypes."""
 import ctypes
 import os
 from pathlib import Path
 
-_lib_path = Path(__file__).parent.parent / "bin" / "liblobster.dylib"
+_lib_path = Path(__file__).parent.parent / "bin" / "libabyss.dylib"
 
 if not _lib_path.exists():
     import subprocess
@@ -72,7 +72,7 @@ _lib.ob_get_best_ask.restype = INT64
 PRICE_SCALE = 100_000_000.0  # Fixed-point scale: 1.0 = 100000000
 
 
-class LobsterBook:
+class AbyssBook:
     """Python wrapper around the C OrderBook."""
     
     def __init__(self, max_price_levels=5000, max_orders=100000):

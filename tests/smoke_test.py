@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Smoke test for LOBSTER Python bindings."""
+"""Smoke test for ABYSS Python bindings."""
 import sys
 sys.path.insert(0, ".")
 
-from lobster.engine import LobsterBook
+from abyss.engine import AbyssBook
 
 def test_create_and_destroy():
-    book = LobsterBook(max_price_levels=100, max_orders=1000)
+    book = AbyssBook(max_price_levels=100, max_orders=1000)
     assert book._ptr is not None
     book.destroy()
     print("  Create and destroy... PASS")
 
 def test_add_orders():
-    book = LobsterBook(max_price_levels=100, max_orders=1000)
+    book = AbyssBook(max_price_levels=100, max_orders=1000)
     
     # Add bids (positive price)
     assert book.add_order(1, 100.0, 5.0) == 0
@@ -30,7 +30,7 @@ def test_add_orders():
     print("  Add orders... PASS")
 
 def test_metrics():
-    book = LobsterBook(max_price_levels=100, max_orders=1000)
+    book = AbyssBook(max_price_levels=100, max_orders=1000)
     
     book.add_order(1, 100.0, 5.0)
     book.add_order(2, -101.0, 4.0)
@@ -45,7 +45,7 @@ def test_metrics():
     print("  Compute metrics... PASS")
 
 def test_execute_trade():
-    book = LobsterBook(max_price_levels=100, max_orders=1000)
+    book = AbyssBook(max_price_levels=100, max_orders=1000)
     
     book.add_order(1, 100.0, 10.0)
     
@@ -57,7 +57,7 @@ def test_execute_trade():
     print("  Execute trade... PASS")
 
 def test_cancel_order():
-    book = LobsterBook(max_price_levels=100, max_orders=1000)
+    book = AbyssBook(max_price_levels=100, max_orders=1000)
     
     book.add_order(1, 100.0, 5.0)
     assert book.best_bid == 100.0
@@ -69,13 +69,13 @@ def test_cancel_order():
     print("  Cancel order... PASS")
 
 def test_context_manager():
-    with LobsterBook(max_price_levels=100, max_orders=1000) as book:
+    with AbyssBook(max_price_levels=100, max_orders=1000) as book:
         book.add_order(1, 100.0, 5.0)
         assert book.best_bid == 100.0
     print("  Context manager... PASS")
 
 if __name__ == "__main__":
-    print("=== LOBSTER Python Bindings Smoke Test ===\n")
+    print("=== ABYSS Python Bindings Smoke Test ===\n")
     
     tests = [
         test_create_and_destroy,

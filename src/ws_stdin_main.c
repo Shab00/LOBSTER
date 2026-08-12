@@ -30,7 +30,7 @@ int main(void) {
     OrderBook *book = ob_create(MAX_PRICE_LEVELS, MAX_ORDERS);
     char line[MAX_LINE];
 
-    fprintf(stderr, "[STARTING] LOBSTER stdin depth stream...\n");
+    fprintf(stderr, "[STARTING] abyss stdin depth stream...\n");
 
     while (running && fgets(line, sizeof(line), stdin)) {
         uint64_t t_start = now_ns();

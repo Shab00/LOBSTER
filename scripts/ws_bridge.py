@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bridge: Binance WebSocket -> stdout for LOBSTER C engine."""
+"""Bridge: Binance WebSocket -> stdout for abyss C engine."""
 import asyncio
 import websockets
 import sys

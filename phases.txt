@@ -1,4 +1,4 @@
-# LOBSTER: Multi-Agent Market Simulation Platform
+# ABYSS: Multi-Agent Market Simulation Platform
 
 ## Project North Star
 
@@ -38,8 +38,8 @@ A production-grade limit order book simulator that replays historical markets, h
 - Simple Python script to validate data integrity
 
 ### Deliverables:
-- C library `liblobster.so` with full test suite
-- Python package `lobster-core` installable via pip
+- C library `libabyss.so` with full test suite
+- Python package `abyss-core` installable via pip
 - Notebook: "Your First Market Replay"
 - README with build instructions and benchmarks
 
@@ -481,7 +481,7 @@ A production-grade limit order book simulator that replays historical markets, h
 
 **Technical Writeup**
 - Blog post series: one per phase, explaining architecture decisions
-- Whitepaper: "LOBSTER: A Multi-Agent Platform for Market Microstructure Research" (academic style, 15-20 pages)
+- Whitepaper: "ABYSS: A Multi-Agent Platform for Market Microstructure Research" (academic style, 15-20 pages)
 - Conference talk proposal: PyData, Strange Loop, or quantitative finance venues
 - Architecture diagram: beautiful, print-quality, tells the whole story at a glance
 
@@ -489,7 +489,7 @@ A production-grade limit order book simulator that replays historical markets, h
 - Project README: compelling, visual, shows results immediately
 - Demo video: 3-5 minutes, shows multi-agent simulation with narration
 - Live demo (if feasible): small-scale version hosted on cheap cloud
-- Comparison to existing tools: why LOBSTER vs others (more realistic agents, faster, polyglot)
+- Comparison to existing tools: why ABYSS vs others (more realistic agents, faster, polyglot)
 - Metrics dashboard screenshot: shows scale (events processed, agents running, etc.)
 
 **Open Source Launch (Optional)**
@@ -507,5 +507,3 @@ A production-grade limit order book simulator that replays historical markets, h
 - Architecture diagram
 - Demo video
 - Portfolio-ready GitHub repository
-
----
