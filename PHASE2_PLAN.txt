@@ -1,0 +1,168 @@
+ABYSS — PHASE 2 PLANNING NOTES
+Assessment date: 2026-08-26
+
+===============================================================================
+1. CURRENT STATE
+===============================================================================
+
+The C core is genuinely solid: order_book.c has correct price-time priority,
+partial fills, arena allocation, and the determinism tests
+(tests/test_determinism.c) properly hash both book state and computed metrics
+across 10 replays. That part of Phase 1 holds up.
+
+But three things are thinner than the Phase 1 summary suggests, and they
+matter directly for Phase 2:
+
+- Metrics are L1-only. metrics.h's Snapshot struct has exactly 4 fields
+  (midprice, spread, imbalance_bps, microprice), all computed from best
+  bid/ask only. engine.py's compute_metrics() mirrors this. There is no bulk
+  accessor for depth beyond L1 — ob_get_bid_volume_at / ob_get_ask_volume_at
+  (order_book.c:410-422) query one price at a time, and neither is even wired
+  into the ctypes bindings.
+
+- abyss/__init__.py is empty — AbyssBook isn't exported from the package, so
+  `from abyss import AbyssBook` doesn't work today.
+
+- simulator.c / simulator.h (CSV-writing event loop) exist but no _main.c
+  uses them — they're dead code, never compiled into a binary per the
+  Makefile's own convention.
+
+===============================================================================
+2. GAPS THAT ACTUALLY BLOCK PHASE 2 (ranked by severity)
+===============================================================================
+
+1. There is no time-series dataset — only one static snapshot.
+   data/btcusdt_depth_live.json is a single REST snapshot from a curl call
+   (July 4). ws_bridge.py streams live depth but only pipes to stdout —
+   nothing persists it. ws_stdin_main.c destroys and rebuilds the book on
+   every message and just prints to the terminal; it doesn't write anything
+   to disk either. Every temporal feature in the Phase 2 spec — rolling
+   volatility, trade intensity, cancel intensity, VPIN — requires a saved
+   historical sequence of events, and none exists yet. This is the actual
+   first thing to fix, before writing a single feature.
+
+2. There is no trade feed at all, only book depth.
+   ws_bridge.py subscribes to btcusdt@depth20@100ms only. Effective spread,
+   realized spread, Amihud illiquidity, trade intensity, and VPIN all
+   require trade prints (price, size, aggressor side), not just quote
+   snapshots. Binance's @trade stream conveniently includes isBuyerMaker,
+   which gives exact trade-side classification for VPIN for free (no
+   tick-rule approximation needed) — but nothing currently subscribes to it.
+
+3. No bulk multi-level accessor exists in C, so "L1-L5 features" can't be
+   pulled efficiently from Python. You'd need 5 separate
+   ob_get_bid_volume_at-style calls per side per snapshot today, and even
+   those aren't in engine.py yet.
+
+4. No Python data-science stack is installed and no packaging exists.
+   .venv only has websockets and pip. No pandas, numpy, pyarrow, or pyyaml.
+   No pyproject.toml or requirements.txt anywhere in the repo.
+
+5. Queue position estimation, as literally specified, isn't achievable from
+   this data source. Binance's public depth stream gives aggregated size per
+   price level, not per-order queue position (that requires L3 data Binance
+   doesn't expose publicly). This needs to be reframed up front as an
+   ESTIMATED queue position (uniform-position-within-visible-size, depleted
+   by observed trade volume at that level), not a design flaw to fix — just
+   don't let it become a silent surprise three weeks in.
+
+6. Repo hygiene will compound the mess. bin/* binaries and build/*.o are
+   committed to git; there's no .gitignore. Once Parquet files and recorded
+   JSONL logs start accumulating, this gets worse fast.
+
+===============================================================================
+3. FIRST 2-3 WEEKS — CONCRETE PLAN
+===============================================================================
+
+-------------------------------------------------------------------------------
+WEEK 1 — Data foundation (do this before any feature code)
+-------------------------------------------------------------------------------
+
+1. Repo cleanup (~30 min):
+   - Add .gitignore (bin/, build/, *.o, *.dylib, __pycache__/, .venv/, a
+     data/ policy).
+   - `git rm --cached` the tracked binaries.
+   - Add pyproject.toml / requirements.txt with pandas, numpy, pyarrow,
+     pyyaml, prometheus-client.
+   - Fix abyss/__init__.py to export AbyssBook.
+
+2. Build the recorder — this is the actual milestone of the week:
+   Extend scripts/ws_bridge.py (or a new scripts/record_stream.py) to
+   subscribe to BOTH btcusdt@depth20@100ms and btcusdt@trade, tag each
+   message with a receive-timestamp envelope, and append to
+   data/raw/{date}/depth.jsonl and data/raw/{date}/trades.jsonl. No C
+   changes needed for this — pure Python.
+
+3. Kick off a continuous recording run and let it run in the background for
+   the rest of the week (aim for at least 24-48h of continuous capture, more
+   if possible — this is the "one day of real data" equivalent from the
+   Phase 1 wishlist that never got done). This is on the critical path for
+   weeks 2-3, so start it immediately, not at the end of the week.
+
+4. In parallel with the recording running:
+   Add a bulk depth accessor to order_book.c / order_book.h (e.g.
+   ob_get_depth(ob, side, n, price_out[], vol_out[]) returning top-N levels
+   in one call) and wire it into engine.py as get_depth(levels=5). Decide
+   and document what happens to simulator.c — recommend deleting it rather
+   than reviving it; the replay/record loop is simpler and more flexible
+   done in Python calling ob_add_order/ob_execute_trade directly than
+   through a half-built C CSV writer.
+
+-------------------------------------------------------------------------------
+WEEK 2 — Feature pipeline skeleton, built against real recorded data
+-------------------------------------------------------------------------------
+
+1. New package layout:
+   abyss/features/ (book_features.py, microstructure.py, temporal.py,
+   queue.py), abyss/config/feature_config.yaml + loader,
+   abyss/io/parquet_writer.py.
+
+2. Build L1-L5 book features first — prices, sizes, imbalances per level.
+   This only needs the depth half of the recording (already available day 1
+   of week 2) and gets you an end-to-end pipeline fastest: recorded JSONL ->
+   replayed through AbyssBook -> get_depth(5) -> feature rows -> Parquet.
+
+3. Add feature versioning as a simple registry (name, version, lineage
+   metadata per feature function) — don't over-engineer this, a dataclass
+   and a dict registry is enough for 50 features.
+
+4. MILESTONE: run the full pipeline over the first day of recorded data,
+   produce a partitioned Parquet file, sanity-check it (row counts line up
+   with input events, no NaN storms, imbalances are bounded correctly).
+
+-------------------------------------------------------------------------------
+WEEK 3 — Trade-dependent features, queue estimation, observability scaffolding
+-------------------------------------------------------------------------------
+
+1. Once several days of trade data have accumulated (from the week-1
+   recorder, which should still be running): implement effective spread,
+   realized spread, Amihud illiquidity, trade intensity, and VPIN using the
+   isBuyerMaker flag for exact trade-side classification.
+
+2. Cancel intensity has to be an approximation — the public stream doesn't
+   expose individual cancels, only net level-size deltas not explained by
+   trades. Implement it that way and document the approximation explicitly
+   in the feature docs (don't let it look like a precise measurement it
+   isn't).
+
+3. Queue position: implement the standard proportional-depletion
+   approximation, documented as such.
+
+4. Prometheus scaffolding: latency histogram around feature computation, a
+   couple of data-quality counters (gaps in Binance's lastUpdateId sequence,
+   stale/missing ticks). Keep this minimal — a dashboard can wait, the
+   counters just need to exist.
+
+5. MILESTONE (from phases.txt's own Phase 2 checkpoint): benchmark feature
+   computation throughput against the 1M events/minute target using the
+   real recorded data, not synthetic data.
+
+-------------------------------------------------------------------------------
+SEQUENCING NOTE
+-------------------------------------------------------------------------------
+
+Steps 1-3 of Week 1 are the actual prerequisite for the rest of Phase 2 — if
+feature code starts before the recorder has been running for a few days,
+you'll be stuck testing microstructure/temporal features against toy data
+and rewriting them later against the real distribution. Start the recorder
+today, even before finishing the C/ctypes work.
